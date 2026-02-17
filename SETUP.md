@@ -255,34 +255,49 @@ This shows the AI understood your intent and routed to the Calendar feature!
 
 Deploy the bot so it runs even when your laptop is closed!
 
-### Option A: Render (Recommended)
+### Option A: Fly.io (Recommended - FREE & Always-On)
+
+**Why Fly.io:**
+- ✅ Free tier: 3 small VMs (256MB RAM) forever
+- ✅ Always-on, no spin-down (critical for reminders)
+- ✅ Persistent storage included
+- ✅ No credit card required for free tier
+
+**Setup:**
+1. Install Fly CLI: `brew install flyctl` (macOS) or see [docs](https://fly.io/docs/hands-on/install-flyctl/)
+2. Sign up: `flyctl auth signup`
+3. Create `fly.toml` in project root (Fly config file)
+4. Deploy: `flyctl launch`
+5. Set secrets:
+   ```bash
+   flyctl secrets set DISCORD_BOT_TOKEN=your_token
+   flyctl secrets set GOOGLE_GEMINI_API_KEY=your_key
+   flyctl secrets set GOOGLE_CALENDAR_ID=primary
+   ```
+6. Deploy: `flyctl deploy`
+
+**Important for Fly.io:**
+You'll need to handle Google Calendar authentication differently for cloud deployment:
+- Run authentication locally first to generate `token.pickle`
+- Upload it as part of deployment or mount as secret
+
+### Option B: Render (Spins Down on Free Tier)
+
+**⚠️ Warning:** Free tier spins down after 15min inactivity - will miss reminders!
+
+Only use Render if you're on paid tier ($7/month).
 
 1. Create account at [Render](https://render.com/)
 2. Click "New" > "Web Service"
-3. Connect your GitHub repo (you'll need to push this code to GitHub first)
-4. Configure:
-   - Name: `ai-assistant-bot` (or whatever you like)
-   - Environment: `Python 3`
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `cd src && python bot.py`
-5. Add environment variables:
-   - `DISCORD_BOT_TOKEN` = your bot token
-   - `GOOGLE_GEMINI_API_KEY` = your Gemini key
-   - `GOOGLE_CALENDAR_ID` = primary
-6. Click "Create Web Service"
+3. Connect GitHub repo
+4. Configure build/start commands
+5. Add environment variables
 
-**Important for Render:**
-You'll need to handle Google Calendar authentication differently for cloud deployment. Options:
-- Run authentication locally first, then upload `token.pickle`
-- Use service account credentials (more complex but better for production)
+### Option C: Railway (No Free Tier)
 
-### Option B: Railway
+**⚠️ Railway removed free tier** - now requires $5/month minimum with payment method.
 
-1. Create account at [Railway](https://railway.app/)
-2. Click "New Project" > "Deploy from GitHub repo"
-3. Select your repo
-4. Add environment variables (same as above)
-5. Railway will auto-detect Python and deploy
+Not recommended unless you want to pay.
 
 ### Option C: Keep Running Locally
 

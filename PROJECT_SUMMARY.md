@@ -472,9 +472,9 @@ cd src && python -c "from services.calendar_service import get_calendar_service;
 **Common Next Tasks (User May Request):**
 - Refine routing logic (improve intent detection accuracy)
 - Adjust Alfred's personality or conversation boundaries
-- Add new features (reminders, todos, weather, email, etc.)
-- Enhance calendar (recurring events, list/delete events, multiple calendars)
-- Deploy to cloud hosting (Render/Railway for 24/7)
+- Add new features (reminders, todos, weather, email, schedule viewing, etc.)
+- Enhance calendar (list/delete events, multiple calendars, schedule queries)
+- Deploy to cloud hosting (Fly.io recommended for 24/7 - free tier, always-on)
 - Debug specific routing or parsing issues
 
 **What NOT to Suggest:**
@@ -629,6 +629,15 @@ limit: 0, model: gemini-2.0-flash
 - Actual usage is via DMs (server is just for Discord's technical requirement)
 - Testing with separate calendar ID before using primary calendar
 - Discord "user installation" doesn't work for bots - must use server installation
+
+**Deployment Plan:**
+- **Platform**: Fly.io (recommended)
+  - Free tier: 3 small VMs (256MB RAM each) forever
+  - Always-on, no spin-down (critical for reminders feature)
+  - Persistent storage included
+  - No credit card required for free tier
+- **Why not Railway**: Removed free tier, now $5/month minimum
+- **Why not Render**: Free tier spins down after 15min inactivity (bad for reminders)
 
 **If User Reports Issues:**
 - Likely related to routing (messages going to wrong feature)
