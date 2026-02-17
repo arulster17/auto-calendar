@@ -1,8 +1,11 @@
-# Discord Assistant Bot
+# alfred
 
-A modular Discord assistant bot powered by Google Gemini AI. Currently features automatic calendar event creation, with an architecture designed for easy expansion to additional capabilities.
+This is a personal attempt to imitate features of tools like OpenClaw using Claude and whatever APIs. This is also me exploring AI-native coding.
+
 
 ## Overview
+
+A modular Discord assistant bot powered by Google Gemini AI. Currently features automatic calendar event creation, with an architecture designed for easy expansion to additional capabilities.
 
 DM the bot on Discord with messages like "Meeting with John tomorrow at 3pm" and it automatically creates a Google Calendar event. The bot uses a modular feature system - calendar is just the first feature, and you can easily add more (reminders, todos, weather, etc.).
 
