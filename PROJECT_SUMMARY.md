@@ -1,8 +1,8 @@
 # Project Summary - AI Assistant Bot
 
-**Last Updated:** 2026-02-17 (Session 3)
-**Status:** ✅ Dual OAuth Calendar Setup Complete - Bot Running & In Active Development
-**Version:** 1.3.0
+**Last Updated:** 2026-02-18 (Session 4)
+**Status:** ✅ YouTube Download Feature Added - Bot Running & In Active Development
+**Version:** 1.4.0
 
 ---
 
@@ -26,11 +26,11 @@ When you start a conversation about this codebase:
 **Current State:**
 - ✅ Bot is running locally and tested
 - ✅ Named "Alfred" with defined personality (professional, friendly, task-focused)
-- ✅ Three features: Calendar (create/modify/view events) + Fun Facts + Conversation (handles greetings/small talk)
+- ✅ Four features: Calendar (create/modify/view events) + Fun Facts + YouTube Downloader + Conversation
 - ✅ All APIs configured (Discord, Gemini, Google Calendar)
 - ✅ **Dual OAuth setup complete** - Readonly access to all calendars, write access to bot calendar only
 - ✅ **100% AI-native** - Zero hardcoded keywords, all routing and parsing via Gemini
-- 🔄 User is refining schedule viewing accuracy
+- ✅ YouTube download feature complete (MP3/MP4 support)
 
 **What to Know:**
 - User wants this to be a general-purpose assistant (not just calendar)
@@ -105,7 +105,22 @@ A general-purpose **personal assistant via Discord DMs** that can:
    - Brief, engaging responses (2-3 sentences)
    - Context-aware: Can provide related facts based on conversation topic
 
-3. **Conversation Feature** - Handle greetings, small talk, and general questions
+3. **YouTube Download Feature** - Download YouTube videos as MP3 or MP4
+   - Location: `src/features/youtube_feature.py`
+   - Download YouTube videos as audio (MP3) or video (MP4)
+   - Supports multiple URLs in a single request (up to 5 at once)
+   - AI-powered intent detection (no keyword matching)
+   - Smart format detection based on user request context
+   - File size validation (Discord 25MB limit)
+   - Automatic cleanup of temporary files
+   - Example requests:
+     - "download this as mp3: [youtube link]"
+     - "convert to mp4: [youtube link]"
+     - "get me the audio from these: [link1] [link2]"
+   - Uses yt-dlp for downloading, ffmpeg for conversion
+   - Files sent directly via Discord DM
+
+4. **Conversation Feature** - Handle greetings, small talk, and general questions
    - Location: `src/features/conversation_feature.py`
    - Provides friendly, brief responses to non-task messages
    - Gently redirects to task-oriented help
@@ -256,9 +271,11 @@ Bot replies to user
 - **python-dotenv >=1.0.1** - Environment variable management
 - **protobuf >=5.29.2,<6.0.0** - Required for google-genai
 - **grpcio >=1.68.1** - gRPC support
+- **yt-dlp >=2026.2.4** - YouTube video/audio downloader
+- **ffmpeg** (system dependency) - Audio/video conversion
 
 **AI Model:**
-- **Google Gemini 2.0 Flash** - AI for routing & parsing (FREE tier)
+- **Google Gemini 2.5 Flash** - AI for routing & parsing (FREE tier)
 
 **APIs Used:**
 - **Google Calendar API** - Calendar integration (FREE)
@@ -469,36 +486,43 @@ cd src && python -c "from services.calendar_service import get_calendar_service;
 
 **FIRST: Read this entire file to understand current state**
 
+**TL;DR for New Session:**
+- ✅ Bot is 100% operational - all APIs working
+- ✅ Four features: Calendar (create/modify/view), Fun Facts, YouTube Download, Conversation
+- ✅ 100% AI-native architecture (ZERO keyword matching - this is critical!)
+- ✅ Dual OAuth for calendar (readonly for viewing, write for bot calendar only)
+- ✅ Uses Gemini 2.5 Flash for all AI routing and parsing
+- 🎯 User is actively iterating and adding features
+- 🚨 **CRITICAL:** Never add keyword matching - all intent via AI
+
 **Key Files to Reference:**
 1. `PROJECT_SUMMARY.md` - This file (overall project state)
-2. `DEPENDENCIES.md` - Complete dependency documentation
-3. `src/config/bot_context.py` - Alfred's personality (guides all responses)
-4. `src/features/calendar_feature.py` - Calendar implementation
-5. `src/features/conversation_feature.py` - Small talk handler
-6. `src/services/intent_router.py` - How AI routing works
-7. `src/services/discord_handler.py` - Main bot logic and feature registration
-8. `requirements.txt` - Python dependencies with versions
-9. `.env.example` - Environment variable template
+2. `src/features/` - All feature implementations (calendar, youtube, fun_fact, conversation)
+3. `src/services/intent_router.py` - AI-powered routing (no keywords!)
+4. `src/services/discord_handler.py` - Main bot logic and feature registration
+5. `src/config/bot_context.py` - Alfred's personality
+6. `requirements.txt` - Python dependencies with versions
 
 **Bot is Operational - APIs Already Set Up:**
 - Discord bot token: configured ✅
 - Google Gemini API: configured ✅
-- Google Calendar API: authenticated ✅
+- Google Calendar API: authenticated (dual OAuth) ✅
+- YouTube downloads: yt-dlp + ffmpeg ready ✅
 - Bot runs with: `cd src && python bot.py`
 
-**Common Next Tasks (User May Request):**
-- Refine routing logic (improve intent detection accuracy)
-- Adjust Alfred's personality or conversation boundaries
-- Add new features (reminders, todos, weather, email, schedule viewing, etc.)
-- Enhance calendar (list/delete events, multiple calendars, schedule queries)
-- Deploy to cloud hosting (Fly.io recommended for 24/7 - free tier, always-on)
-- Debug specific routing or parsing issues
+**Likely Next Tasks (User May Request):**
+- Add more features (web search, reminders, todos, weather, translation, notes, etc.)
+- Refine existing features (improve prompts, handle edge cases)
+- Deploy to cloud hosting (Fly.io recommended for 24/7)
+- Debug routing or parsing issues
+- Test YouTube download feature
 
 **What NOT to Suggest:**
-- Don't suggest redoing API setup (already done)
-- Don't make it overly chatty (task-focused, not chatbot)
-- Don't suggest server features (this is DM-first personal assistant)
-- Don't over-engineer simple requests
+- ❌ Don't suggest redoing API setup (already done)
+- ❌ Don't add keyword matching (100% AI-native philosophy)
+- ❌ Don't make it overly chatty (task-focused, not chatbot)
+- ❌ Don't suggest server features (this is DM-first personal assistant)
+- ❌ Don't over-engineer simple requests
 
 ---
 
@@ -529,18 +553,35 @@ cd src && python -c "from services.calendar_service import get_calendar_service;
   - No `keywords = [...]` lists
   - No `can_handle()` methods with keyword checks
   - No `if "word" in text.lower()` patterns
+  - No regex fallbacks for parsing
   - All routing and parsing is via Gemini AI interpreting meaning
+  - User will ALWAYS call this out if you add keywords (it's happened multiple times)
 - ❌ Don't make Alfred overly chatty (he's task-focused)
 - ❌ Don't make calendar-specific suggestions (this is general assistant)
 - ❌ Don't suggest paid APIs or services
 - ❌ Don't over-engineer simple requests
 - ❌ Don't forget to update this file when making significant changes
 
-**When User Says "adjust project summary":**
+**Common Mistakes to Avoid (Learned from Past Sessions):**
+- Adding keyword fallbacks "just in case" → User wants pure AI, no fallbacks
+- Suggesting features without checking if already implemented
+- Missing timezone handling (user is in PST/PDT - America/Los_Angeles)
+- Using wrong Gemini model (it's 2.5 Flash, not 2.0 or 1.5)
+- Forgetting to update PROJECT_SUMMARY.md after changes
+
+**When User Says "update project summary":**
 - They mean this file (PROJECT_SUMMARY.md)
 - Update it to reflect current state accurately
 - This file is FOR YOU (future Claude sessions) to get up to speed quickly
 - Focus on actionable info, not marketing copy
+- Include: what's built, what's working, known issues, next steps, lessons learned
+
+**User's Communication Style:**
+- Direct and concise
+- Will correct you if you misunderstand (e.g., "we are on 2.5 flash. don't get confused")
+- Values quick iteration over perfect documentation
+- Appreciates when you proactively use tools (TodoWrite, etc.)
+- Wants PROJECT_SUMMARY.md updated regularly as a handoff document
 
 **Development History:**
 - **Session 1 (Initial):** Built core architecture, calendar feature, AI routing
@@ -586,85 +627,104 @@ cd src && python -c "from services.calendar_service import get_calendar_service;
     - Installed `python-dotenv` in venv
     - Moved credential files to correct `credentials/` directory
     - Re-authenticated with new OAuth scopes
-  - **Debugging schedule accuracy**
-    - Added date filtering to prevent wrong-day events
-    - Added deduplication for events in multiple calendars
-    - Fixed timezone-aware vs naive datetime comparison (all-day events now UTC-aware)
-    - Added extensive debug logging:
-      - Shows all events returned by API
-      - Displays event date vs target date comparison
-      - Indicates which events are included/skipped and why
-    - Investigating missing events issue (some valid events being filtered out)
+  - **Fixed schedule viewing completely**
+    - Timezone issues: Query with local timezone (PST/PDT) boundaries
+    - Date calculation: Improved prompt to help Gemini calculate relative dates correctly
+    - All-day events: Now sort first, then timed events chronologically
+    - Deduplication: Events with same title + time deduplicated across calendars
+    - Debug logging: Comprehensive tracking of event processing
 
-**Current Session Status (2026-02-17 PM - Latest):**
-- ✅ Dual OAuth setup complete and authenticated
-- ✅ Schedule viewing works across all calendars
-- ✅ 100% AI-native (zero keywords)
-- ✅ All dependencies installed correctly
-- ✅ Fixed timezone-aware vs naive datetime comparison error
-- ✅ Added extensive debug logging for schedule view
-- 🔄 Debugging missing events in schedule view (e.g., "tomato eating competition" at 6:30 PM)
-- 🔄 Investigating date filtering accuracy
+- **Session 4 (2026-02-18):**
+  - **Verified Gemini model version**
+    - Confirmed all code uses `gemini-2.5-flash` (not 2.0)
+    - Updated documentation to reflect correct model version
+  - **MAJOR: Implemented YouTube Download Feature**
+    - Download YouTube videos as MP3 (audio) or MP4 (video)
+    - Support for multiple URLs per request (up to 5)
+    - 100% AI-native parsing (no keyword fallbacks)
+    - Smart format detection based on user intent
+    - File size validation (Discord 25MB limit)
+    - Uses yt-dlp + ffmpeg for downloads/conversion
+    - Automatic temp file cleanup
+    - Files sent directly via Discord DM
+  - **Maintained AI-native architecture**
+    - Removed regex/keyword fallbacks from YouTube feature
+    - All parsing via Gemini 2.5 Flash
+    - Consistent with zero-keyword philosophy
 
-**Known Issues Being Debugged:**
-- Some events missing from schedule view despite being in calendar
-- Date filtering may be too aggressive (filtering out valid events)
-- Timezone conversion may cause events to appear on wrong date
-- Added detailed logging to track:
-  - Which events are returned by API
-  - What date/time each event is stored as
-  - Whether events are included or filtered out and why
+**Current Session Status (2026-02-18):**
+- ✅ Gemini model version verified (2.5 Flash)
+- ✅ Documentation updated to reflect correct model
+- ✅ YouTube download feature implemented and ready
+  - MP3 and MP4 support
+  - Multiple URL handling (up to 5 per request)
+  - 100% AI-native (no keyword matching)
+  - Integrated into discord_handler.py
+  - Added to requirements.txt
+- ✅ All features maintain zero-keyword philosophy
+- 🎯 YouTube feature complete, ready for testing
+- 📝 PROJECT_SUMMARY.md updated with comprehensive handoff info
 
-## 🚨 Current Issues & Solutions
+**Next Session Should Know:**
+- YouTube feature is untested - may need debugging
+- User interested in adding more general assistant features
+- Keep maintaining AI-native architecture (no keywords!)
+- Update this file after significant changes
 
-### **Issue #1: Gemini API Free Tier Quota Exhausted**
+## 🚨 Known Issues & Important Notes
+
+### **Issue #1: Gemini API Rate Limits (KNOWN, HANDLED)**
 
 **Problem:**
-- gemini-2.5-flash: 20 requests/day limit (too low)
-- gemini-2.0-flash: 0 requests/day limit on free tier (not available for free!)
-- Both models hit quota limits quickly during testing
+- Free tier has daily request limits (varies by model)
+- gemini-2.5-flash currently in use
+- Can hit quota during heavy testing
 
-**Error Message:**
-```
-429 RESOURCE_EXHAUSTED
-Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests
-limit: 0, model: gemini-2.0-flash
-```
+**Current Status:**
+- ⚠️ May encounter rate limits during development
+- Error handling in place (user-friendly messages)
+- Not a blocker - just need to be aware
 
-**Current Workaround:**
-- Bot now displays user-friendly error message when rate limits hit
-- Error handling added to discord_handler and intent_router
-- Users see: "⚠️ I'm currently experiencing API rate limit issues..."
+**If Rate Limits Hit:**
+1. Wait for quota reset (daily)
+2. Consider paid tier if user wants ($0.50-$1.00 per 1M tokens)
+3. Could switch to different model/provider if needed
 
-**Permanent Solutions (Pick One):**
+### **Issue #2: YouTube Downloads - Discord File Size Limit**
 
-1. **Switch to gemini-1.5-pro (if available on free tier)**
-   - Check if this model has better free tier quotas
-   - May be available with different limits
+**Problem:**
+- Discord free users: 25MB file size limit
+- Longer YouTube videos may exceed this
 
-2. **Use paid Gemini API tier**
-   - Pay-as-you-go pricing
-   - Much higher rate limits
-   - Cost: ~$0.50-$1.00 per 1 million tokens
+**Current Handling:**
+- Feature checks file size before sending
+- Warns user if >25MB
+- Files are downloaded but not sent
 
-3. **Switch to different AI provider**
-   - OpenAI GPT-3.5/GPT-4
-   - Anthropic Claude (ha!)
-   - Local models (Ollama)
+**Potential Solutions (if user requests):**
+- Upload to cloud storage and send link instead
+- Compress files more aggressively
+- Split large files
 
-4. **Implement request batching/caching**
-   - Cache routing decisions for similar messages
-   - Reduce redundant API calls
-   - More complex implementation
+### **Issue #3: YouTube Feature - Untested**
 
-**Status:** ⚠️ KNOWN ISSUE - Free tier quotas vary by Gemini model
+**Status:**
+- Feature implemented but not tested in production
+- May have bugs with:
+  - URL extraction edge cases
+  - Format detection accuracy
+  - yt-dlp errors
+  - ffmpeg conversion issues
 
-**Details:**
-- Different Gemini models have different free tier limits
-- Some models (like gemini-2.0-flash) may have limited free tier availability
-- Current workaround: Monitor usage and adjust model choice as needed
-- Alternative: Consider upgrading to paid tier if quotas are exceeded
-- Check current quotas: https://ai.google.dev/pricing
+**Action:** Test thoroughly before relying on it
+
+### **Working Well - No Issues:**
+- ✅ Calendar feature (create/modify/view) - fully tested
+- ✅ Fun Facts feature - working
+- ✅ Conversation feature - working
+- ✅ AI routing - working well (0.6 confidence threshold)
+- ✅ Dual OAuth calendar setup - working
+- ✅ Timezone handling (PST/PDT) - fixed and working
 
 **Conversation Context Features:**
 - Remembers last 10 messages per user
