@@ -7,7 +7,6 @@ in separate modules following the same pattern.
 
 import os
 from google import genai
-from services.gemini_parser import parse_message_to_events
 from services.calendar_service import create_calendar_event, search_events, modify_event, get_read_service
 
 # Lazy-load Gemini client

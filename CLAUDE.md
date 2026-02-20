@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Alfred is a personal AI assistant that operates via Discord DMs. It uses Google Gemini to understand natural language and route requests to modular feature handlers. Currently operational with four features: Calendar, Fun Facts, YouTube Download, and Conversation.
+Alfred is a general-purpose AI personal assistant that operates via Discord DMs. It uses Google Gemini to understand natural language and route requests to modular feature handlers. Currently operational with four features: Calendar Management, YouTube Downloader, Fun Facts, and Conversation.
 
 **Run the bot:**
 ```bash
@@ -53,7 +53,6 @@ All intent detection and data extraction goes through Gemini AI.
 | `src/config/bot_context.py` | Alfred's personality (single source of truth) |
 | `src/services/discord_handler.py` | Discord bot + feature registration + context management |
 | `src/services/intent_router.py` | AI-powered feature routing (Gemini, confidence threshold: 0.6) |
-| `src/services/gemini_parser.py` | Natural language → calendar event data |
 | `src/services/calendar_service.py` | Google Calendar API (create/search/modify events) |
 | `src/features/calendar_feature.py` | Calendar: create, modify, view events |
 | `src/features/fun_fact_feature.py` | Fun fact generation |
@@ -126,9 +125,9 @@ Never commit `.env`, `credentials/`, or `*.pickle` files.
 
 - **User timezone**: `America/Los_Angeles` (PST/PDT)
 - **DM-first design**: Personal assistant via DMs, not a server bot
-- **Personality**: Professional, concise, task-focused. Brief small talk (1-2 exchanges) then redirects.
+- **Personality**: Professional, concise, task-focused. Brief small talk (1-2 exchanges) then redirects
+- **Alfred's role**: General-purpose assistant, NOT just a calendar tool - handles multiple task types
 - **All APIs free**: Never suggest paid tiers or paid APIs
-- **Preferred hosting**: Fly.io (free, always-on, no spin-down)
 - **Simple code**: Avoid over-engineering; don't add features not explicitly requested
 - **Working code > documentation**
 
@@ -148,20 +147,21 @@ Never commit `.env`, `credentials/`, or `*.pickle` files.
 
 ## Current Features Status
 
-- **Calendar**: Create, modify, view events — fully tested
-- **Fun Facts**: Working
-- **YouTube Download**: Implemented (MP3/MP4, up to 5 URLs, 25MB Discord limit) — needs testing
-- **Conversation**: Working (fallback/small talk)
-- **AI Routing**: Working (0.6 confidence threshold)
-- **Dual OAuth**: Working (readonly for view, write for bot calendar)
-- **Context system**: Working (10 messages / 15 min per user, in-memory)
+- **Calendar**: Create, modify, view events — fully tested ✅
+- **YouTube Download**: MP3/MP4, individual ranges per video, up to 5 URLs, 25MB Discord limit — fully tested ✅
+- **Fun Facts**: Working ✅
+- **Conversation**: Working (fallback/small talk) ✅
+- **AI Routing**: Working (0.6 confidence threshold) ✅
+- **Dual OAuth**: Working (readonly for view, write for bot calendar) ✅
+- **Context system**: Working (10 messages / 15 min per user, in-memory) ✅
 
 ---
 
 ## Common Debugging
 
 - **Wrong feature routing**: Improve that feature's `get_capabilities()` description
-- **Calendar parsing errors**: Check `gemini_parser.py` prompt; look at Gemini response in logs
+- **Calendar parsing errors**: Check `calendar_feature.py` `_parse_calendar_request()` prompt
+- **YouTube download issues**: Check `youtube_feature.py` `_parse_request()` prompt and download logic
 - **Alfred too chatty/rigid**: Adjust `bot_context.py`
 - **Run from `src/` directory**: Imports assume `src/` as working directory
 

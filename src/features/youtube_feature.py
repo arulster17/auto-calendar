@@ -81,49 +81,48 @@ class YouTubeFeature:
             str: Response message
         """
         try:
-            # Use AI to parse the request
+            # Use AI to parse the request into download tasks
             parsed = await self._parse_request(message_text, context)
 
-            if not parsed.get('urls'):
+            downloads = parsed.get('downloads', [])
+            if not downloads:
                 return "I couldn't find any YouTube URLs in your message. Please include at least one YouTube link."
 
-            urls = parsed['urls']
-            format_type = parsed.get('format', 'mp3').lower()  # Default to mp3
-            time_range = parsed.get('time_range')  # Optional time range
-
-            if format_type not in ['mp3', 'mp4']:
-                return f"Sorry, I can only convert to MP3 or MP4 format. You requested: {format_type}"
-
-            # Validate URL count
-            if len(urls) > 5:
+            # Validate download count
+            if len(downloads) > 5:
                 return "I can download up to 5 videos at once. Please try again with fewer URLs."
 
-            # Send initial response
-            if len(urls) == 1:
-                range_info = ""
-                if time_range:
-                    start_str = self._seconds_to_timestamp(time_range['start'])
-                    end_str = self._seconds_to_timestamp(time_range['end'])
-                    range_info = f" ({start_str} to {end_str})"
-                await message.channel.send(f"⏳ Downloading as {format_type.upper()}{range_info}... This may take a moment.")
-            else:
-                range_note = ""
-                if time_range:
-                    start_str = self._seconds_to_timestamp(time_range['start'])
-                    end_str = self._seconds_to_timestamp(time_range['end'])
-                    range_note = f" (clipping {start_str} to {end_str} from each)"
-                await message.channel.send(f"⏳ Downloading {len(urls)} videos as {format_type.upper()}{range_note}... This may take a moment.")
+            # Validate formats
+            for task in downloads:
+                if task.get('format', 'mp3').lower() not in ['mp3', 'mp4']:
+                    return f"Sorry, I can only convert to MP3 or MP4 format. Invalid format: {task.get('format')}"
 
-            # Download each URL
+            # Send initial response
+            if len(downloads) == 1:
+                task = downloads[0]
+                range_info = ""
+                if task.get('time_range'):
+                    start_str = self._seconds_to_timestamp(task['time_range']['start'])
+                    end_str = self._seconds_to_timestamp(task['time_range']['end'])
+                    range_info = f" ({start_str} to {end_str})"
+                await message.channel.send(f"⏳ Downloading as {task.get('format', 'mp3').upper()}{range_info}... This may take a moment.")
+            else:
+                await message.channel.send(f"⏳ Downloading {len(downloads)} video(s)... This may take a moment.")
+
+            # Download each task
             downloaded_files = []
             errors = []
 
-            for url in urls:
+            for task in downloads:
                 try:
+                    url = task['url']
+                    format_type = task.get('format', 'mp3').lower()
+                    time_range = task.get('time_range')
+
                     file_path = await self._download_video(url, format_type, time_range)
                     downloaded_files.append(file_path)
                 except Exception as e:
-                    errors.append(f"Failed to download {url}: {str(e)}")
+                    errors.append(f"Failed to download {task.get('url', 'unknown')}: {str(e)}")
 
             # Send files to user via Discord
             if downloaded_files:
@@ -165,14 +164,14 @@ class YouTubeFeature:
 
     async def _parse_request(self, message_text, context=None):
         """
-        Use AI to parse the download request and extract URLs, format, and time range.
+        Use AI to parse the download request and extract download tasks.
 
         Args:
             message_text: User's message
             context: Conversation context
 
         Returns:
-            dict: {'urls': [list of URLs], 'format': 'mp3' or 'mp4', 'time_range': {'start': seconds, 'end': seconds} or None}
+            dict: {'downloads': [{'url': str, 'format': str, 'time_range': dict or None}, ...]}
         """
         # Format context if available
         context_str = ""
@@ -187,12 +186,12 @@ class YouTubeFeature:
 {context_str}
 User message: "{message_text}"
 
-Extract the following information:
-1. All YouTube URLs (youtube.com, youtu.be, etc.)
-2. Desired format: MP3 (audio) or MP4 (video)
-3. Time range (optional): If user specifies timestamps, start time, end time, or duration
+Parse this into a list of YouTube download tasks. Each task should have:
+1. URL (youtube.com, youtu.be, etc.)
+2. Format: MP3 (audio) or MP4 (video)
+3. Time range (optional): start and end times in seconds
 
-If the user doesn't specify a format:
+If the user doesn't specify a format for a video:
 - Default to MP3 if they mention "audio", "song", "music", "mp3"
 - Default to MP4 if they mention "video", "mp4"
 - Otherwise default to MP3
@@ -204,32 +203,39 @@ For time ranges, convert to seconds:
 - "2 minutes" = 120
 - "first 30 seconds" = start: 0, end: 30
 - "from 1:30 to 3:45" = start: 90, end: 225
+- "1:50 to 2:24" = start: 110, end: 144
+
+IMPORTANT: Match each URL with its corresponding time range and format. If user specifies different ranges for different videos, create separate tasks.
 
 Return ONLY valid JSON:
 {{
-  "urls": ["url1", "url2", ...],
-  "format": "mp3" or "mp4",
-  "time_range": {{"start": start_seconds, "end": end_seconds}} or null
+  "downloads": [
+    {{"url": "url", "format": "mp3" or "mp4", "time_range": {{"start": seconds, "end": seconds}} or null}},
+    ...
+  ]
 }}
 
 Examples:
 User: "download as mp3: https://youtube.com/watch?v=abc"
-Response: {{"urls": ["https://youtube.com/watch?v=abc"], "format": "mp3", "time_range": null}}
+Response: {{"downloads": [{{"url": "https://youtube.com/watch?v=abc", "format": "mp3", "time_range": null}}]}}
 
 User: "convert to mp4: https://youtu.be/xyz"
-Response: {{"urls": ["https://youtu.be/xyz"], "format": "mp4", "time_range": null}}
+Response: {{"downloads": [{{"url": "https://youtu.be/xyz", "format": "mp4", "time_range": null}}]}}
 
 User: "get the audio from these: [link1] [link2]"
-Response: {{"urls": ["link1", "link2"], "format": "mp3", "time_range": null}}
+Response: {{"downloads": [{{"url": "link1", "format": "mp3", "time_range": null}}, {{"url": "link2", "format": "mp3", "time_range": null}}]}}
 
 User: "download from 1:30 to 3:45 as mp3: https://youtube.com/watch?v=abc"
-Response: {{"urls": ["https://youtube.com/watch?v=abc"], "format": "mp3", "time_range": {{"start": 90, "end": 225}}}}
+Response: {{"downloads": [{{"url": "https://youtube.com/watch?v=abc", "format": "mp3", "time_range": {{"start": 90, "end": 225}}}}]}}
 
 User: "get me the first 2 minutes: https://youtu.be/xyz"
-Response: {{"urls": ["https://youtu.be/xyz"], "format": "mp3", "time_range": {{"start": 0, "end": 120}}}}
+Response: {{"downloads": [{{"url": "https://youtu.be/xyz", "format": "mp3", "time_range": {{"start": 0, "end": 120}}}}]}}
 
-User: "download from 30 seconds to 1 minute as mp4: https://youtube.com/watch?v=test"
-Response: {{"urls": ["https://youtube.com/watch?v=test"], "format": "mp4", "time_range": {{"start": 30, "end": 60}}}}
+User: "i want to convert this to mp3 https://youtube.com/watch?v=abc, but only the part from 1:50 to 2:24. i also want to download an mp3 from 0:14 to 0:43 of https://youtube.com/watch?v=xyz"
+Response: {{"downloads": [{{"url": "https://youtube.com/watch?v=abc", "format": "mp3", "time_range": {{"start": 110, "end": 144}}}}, {{"url": "https://youtube.com/watch?v=xyz", "format": "mp3", "time_range": {{"start": 14, "end": 43}}}}]}}
+
+User: "download this as mp4 from 0:30 to 1:00: [link1], and this as mp3: [link2]"
+Response: {{"downloads": [{{"url": "link1", "format": "mp4", "time_range": {{"start": 30, "end": 60}}}}, {{"url": "link2", "format": "mp3", "time_range": null}}]}}
 """
 
         try:
@@ -255,7 +261,7 @@ Response: {{"urls": ["https://youtube.com/watch?v=test"], "format": "mp4", "time
             print(f"Error parsing download request with AI: {e}")
             # If AI parsing fails completely, we can't reliably extract intent
             # Return empty to trigger error message to user
-            return {'urls': [], 'format': 'mp3', 'time_range': None}
+            return {'downloads': []}
 
     def _seconds_to_timestamp(self, seconds):
         """
