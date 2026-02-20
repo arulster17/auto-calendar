@@ -53,6 +53,7 @@ class YouTubeFeature:
         - Convert YouTube videos to MP3 (audio only)
         - Download YouTube videos as MP4 (video with audio)
         - Handle multiple YouTube URLs at once
+        - Download specific time ranges/clips from videos
         - Supports various YouTube URL formats (youtube.com, youtu.be, etc.)
 
         Example requests:
@@ -62,6 +63,9 @@ class YouTubeFeature:
         - "get me the audio from [link]"
         - "download these videos as mp3: [link1] [link2]"
         - "convert these to mp4: [multiple links]"
+        - "download from 1:30 to 3:45 as mp3: [link]"
+        - "get me the section from 2 minutes to 5 minutes: [link]"
+        - "download the first 30 seconds as mp4: [link]"
         """
 
     async def handle(self, message, message_text, context=None):
@@ -85,6 +89,7 @@ class YouTubeFeature:
 
             urls = parsed['urls']
             format_type = parsed.get('format', 'mp3').lower()  # Default to mp3
+            time_range = parsed.get('time_range')  # Optional time range
 
             if format_type not in ['mp3', 'mp4']:
                 return f"Sorry, I can only convert to MP3 or MP4 format. You requested: {format_type}"
@@ -95,9 +100,19 @@ class YouTubeFeature:
 
             # Send initial response
             if len(urls) == 1:
-                await message.channel.send(f"⏳ Downloading as {format_type.upper()}... This may take a moment.")
+                range_info = ""
+                if time_range:
+                    start_str = self._seconds_to_timestamp(time_range['start'])
+                    end_str = self._seconds_to_timestamp(time_range['end'])
+                    range_info = f" ({start_str} to {end_str})"
+                await message.channel.send(f"⏳ Downloading as {format_type.upper()}{range_info}... This may take a moment.")
             else:
-                await message.channel.send(f"⏳ Downloading {len(urls)} videos as {format_type.upper()}... This may take a moment.")
+                range_note = ""
+                if time_range:
+                    start_str = self._seconds_to_timestamp(time_range['start'])
+                    end_str = self._seconds_to_timestamp(time_range['end'])
+                    range_note = f" (clipping {start_str} to {end_str} from each)"
+                await message.channel.send(f"⏳ Downloading {len(urls)} videos as {format_type.upper()}{range_note}... This may take a moment.")
 
             # Download each URL
             downloaded_files = []
@@ -105,7 +120,7 @@ class YouTubeFeature:
 
             for url in urls:
                 try:
-                    file_path = await self._download_video(url, format_type)
+                    file_path = await self._download_video(url, format_type, time_range)
                     downloaded_files.append(file_path)
                 except Exception as e:
                     errors.append(f"Failed to download {url}: {str(e)}")
@@ -134,8 +149,8 @@ class YouTubeFeature:
                         # Clean up temp file
                         try:
                             os.remove(file_path)
-                        except:
-                            pass
+                        except Exception as e:
+                            print(f"Warning: Failed to clean up temp file {file_path}: {e}")
 
             # Build response message
             if downloaded_files and not errors:
@@ -150,14 +165,14 @@ class YouTubeFeature:
 
     async def _parse_request(self, message_text, context=None):
         """
-        Use AI to parse the download request and extract URLs and format preference.
+        Use AI to parse the download request and extract URLs, format, and time range.
 
         Args:
             message_text: User's message
             context: Conversation context
 
         Returns:
-            dict: {'urls': [list of URLs], 'format': 'mp3' or 'mp4'}
+            dict: {'urls': [list of URLs], 'format': 'mp3' or 'mp4', 'time_range': {'start': seconds, 'end': seconds} or None}
         """
         # Format context if available
         context_str = ""
@@ -175,27 +190,46 @@ User message: "{message_text}"
 Extract the following information:
 1. All YouTube URLs (youtube.com, youtu.be, etc.)
 2. Desired format: MP3 (audio) or MP4 (video)
+3. Time range (optional): If user specifies timestamps, start time, end time, or duration
 
 If the user doesn't specify a format:
 - Default to MP3 if they mention "audio", "song", "music", "mp3"
 - Default to MP4 if they mention "video", "mp4"
 - Otherwise default to MP3
 
+For time ranges, convert to seconds:
+- "1:30" = 90 seconds
+- "2:15:30" = 8130 seconds (2 hours, 15 minutes, 30 seconds)
+- "30 seconds" = 30
+- "2 minutes" = 120
+- "first 30 seconds" = start: 0, end: 30
+- "from 1:30 to 3:45" = start: 90, end: 225
+
 Return ONLY valid JSON:
 {{
   "urls": ["url1", "url2", ...],
-  "format": "mp3" or "mp4"
+  "format": "mp3" or "mp4",
+  "time_range": {{"start": start_seconds, "end": end_seconds}} or null
 }}
 
 Examples:
 User: "download as mp3: https://youtube.com/watch?v=abc"
-Response: {{"urls": ["https://youtube.com/watch?v=abc"], "format": "mp3"}}
+Response: {{"urls": ["https://youtube.com/watch?v=abc"], "format": "mp3", "time_range": null}}
 
 User: "convert to mp4: https://youtu.be/xyz"
-Response: {{"urls": ["https://youtu.be/xyz"], "format": "mp4"}}
+Response: {{"urls": ["https://youtu.be/xyz"], "format": "mp4", "time_range": null}}
 
 User: "get the audio from these: [link1] [link2]"
-Response: {{"urls": ["link1", "link2"], "format": "mp3"}}
+Response: {{"urls": ["link1", "link2"], "format": "mp3", "time_range": null}}
+
+User: "download from 1:30 to 3:45 as mp3: https://youtube.com/watch?v=abc"
+Response: {{"urls": ["https://youtube.com/watch?v=abc"], "format": "mp3", "time_range": {{"start": 90, "end": 225}}}}
+
+User: "get me the first 2 minutes: https://youtu.be/xyz"
+Response: {{"urls": ["https://youtu.be/xyz"], "format": "mp3", "time_range": {{"start": 0, "end": 120}}}}
+
+User: "download from 30 seconds to 1 minute as mp4: https://youtube.com/watch?v=test"
+Response: {{"urls": ["https://youtube.com/watch?v=test"], "format": "mp4", "time_range": {{"start": 30, "end": 60}}}}
 """
 
         try:
@@ -221,42 +255,78 @@ Response: {{"urls": ["link1", "link2"], "format": "mp3"}}
             print(f"Error parsing download request with AI: {e}")
             # If AI parsing fails completely, we can't reliably extract intent
             # Return empty to trigger error message to user
-            return {'urls': [], 'format': 'mp3'}
+            return {'urls': [], 'format': 'mp3', 'time_range': None}
 
-    async def _download_video(self, url, format_type):
+    def _seconds_to_timestamp(self, seconds):
         """
-        Download video using yt-dlp.
+        Convert seconds to human-readable timestamp.
+
+        Args:
+            seconds: Number of seconds
+
+        Returns:
+            str: Formatted timestamp (e.g., "1:30", "2:15:30")
+        """
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        secs = int(seconds % 60)
+
+        if hours > 0:
+            return f"{hours}:{minutes:02d}:{secs:02d}"
+        else:
+            return f"{minutes}:{secs:02d}"
+
+    async def _download_video(self, url, format_type, time_range=None):
+        """
+        Download video using yt-dlp, with optional time range support.
 
         Args:
             url: YouTube URL
             format_type: 'mp3' or 'mp4'
+            time_range: Optional dict with 'start' and 'end' in seconds
 
         Returns:
             str: Path to downloaded file
         """
         output_template = str(self.temp_dir / '%(title)s.%(ext)s')
 
+        # Base options
+        ydl_opts = {
+            'outtmpl': output_template,
+            'quiet': True,
+            'no_warnings': True,
+        }
+
+        # Add time range support via ffmpeg postprocessor if specified
+        postprocessors = []
+
+        if time_range:
+            # yt-dlp can use ffmpeg to extract time ranges
+            # Use download_ranges to specify the time range
+            ydl_opts['download_ranges'] = lambda info_dict, chapters: [
+                {
+                    'start_time': time_range['start'],
+                    'end_time': time_range['end']
+                }
+            ]
+            # Force using ffmpeg to cut the video
+            ydl_opts['force_keyframes_at_cuts'] = True
+
         if format_type == 'mp3':
             # Audio only
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'outtmpl': output_template,
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-                'quiet': True,
-                'no_warnings': True,
-            }
+            ydl_opts['format'] = 'bestaudio/best'
+            postprocessors.append({
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            })
         else:
             # Video with audio
-            ydl_opts = {
-                'format': 'best[ext=mp4]/best',
-                'outtmpl': output_template,
-                'quiet': True,
-                'no_warnings': True,
-            }
+            ydl_opts['format'] = 'best[ext=mp4]/best'
+
+        # Add postprocessors if any
+        if postprocessors:
+            ydl_opts['postprocessors'] = postprocessors
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # Download and get info
