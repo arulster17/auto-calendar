@@ -159,6 +159,23 @@ Never commit `.env`, `credentials/`, or `*.pickle` files.
 
 ---
 
+## Testing
+
+Tests live in `tests/` and run against real Gemini + APIs (no mocks). No Discord bot needed.
+
+```bash
+pytest
+```
+
+| File | What it covers |
+|------|---------------|
+| `tests/test_router.py` | 12 parametrized routing cases across all 5 features |
+| `tests/test_features.py` | Calendar view, Search (3), Fun Fact (2), Conversation (2) |
+
+YouTube `handle()` is excluded (downloads real files, sends via Discord). Calendar create/modify excluded (would make real events). Both are covered by routing tests.
+
+---
+
 ## Common Debugging
 
 - **Wrong feature routing**: Improve that feature's `get_capabilities()` description
