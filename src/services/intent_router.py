@@ -9,6 +9,7 @@ routes to the correct feature handler.
 import os
 import json
 from google import genai
+from google.genai import types
 
 # Lazy-load client to ensure env vars are loaded first
 _client = None
@@ -75,15 +76,12 @@ class IntentRouter:
             client = _get_client()
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=prompt
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
             )
             response_text = response.text.strip()
-
-            # Clean up response (remove markdown if present)
-            if response_text.startswith('```json'):
-                response_text = response_text.split('```json')[1].split('```')[0].strip()
-            elif response_text.startswith('```'):
-                response_text = response_text.split('```')[1].split('```')[0].strip()
 
             # Parse JSON response
             result = json.loads(response_text)

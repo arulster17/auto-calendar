@@ -5,7 +5,9 @@ A simple entertainment feature for the assistant bot.
 """
 
 import os
+import json
 from google import genai
+from google.genai import types
 
 # Lazy-load client
 _client = None
@@ -90,15 +92,18 @@ Requirements:
 - Don't start with "Here's a fun fact" or similar - just state the fact
 - If the conversation context suggests a topic, you can provide a related fact
 
-Return ONLY the fun fact text.
+Return JSON: {"response": "the fun fact here"}
             """.strip()
 
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=prompt
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
             )
 
-            return response.text.strip()
+            return json.loads(response.text)["response"]
 
         except Exception as e:
             print(f"Error in fun fact feature: {str(e)}")

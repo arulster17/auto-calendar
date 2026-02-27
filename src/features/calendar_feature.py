@@ -7,6 +7,7 @@ in separate modules following the same pattern.
 
 import os
 from google import genai
+from google.genai import types
 from services.calendar_service import create_calendar_event, search_events, modify_event, get_read_service
 
 # Lazy-load Gemini client
@@ -253,15 +254,12 @@ Now parse the message and return ONLY the JSON.
 
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=prompt
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
             )
             response_text = response.text.strip()
-
-            # Clean up response (remove markdown if present)
-            if response_text.startswith('```json'):
-                response_text = response_text.split('```json')[1].split('```')[0].strip()
-            elif response_text.startswith('```'):
-                response_text = response_text.split('```')[1].split('```')[0].strip()
 
             # Parse JSON
             parsed = json.loads(response_text)
@@ -417,60 +415,61 @@ Now parse the message and return ONLY the JSON.
         return formatted + "\n"
 
     async def _handle_modification(self, search_query, updates):
-        """Handle requests to modify existing calendar events (data already parsed by AI)"""
+        """Handle requests to modify existing calendar events — confirmation gated."""
         try:
             if not search_query:
                 return "I couldn't understand what events you want to modify. Please be more specific."
 
-            # Search for matching events
             matching_events = search_events(search_query)
 
             if not matching_events:
                 return f"I couldn't find any events matching '{search_query}'."
 
-            # Modify all matching events
-            modified_count = 0
-            modified_events = []
-            is_recurring = False
-            for event in matching_events:
-                try:
-                    modify_event(event['id'], updates)
-                    modified_count += 1
-                    # Get the updated event title and check if recurring
-                    event_title = updates.get('summary', event.get('summary', 'Untitled'))
-                    modified_events.append(event_title)
-                    if event.get('recurrence'):
-                        is_recurring = True
-                except Exception as e:
-                    print(f"Error modifying event {event.get('summary')}: {str(e)}")
-                    continue
+            # Build human-readable description of what will change
+            update_lines = []
+            if 'summary' in updates:
+                update_lines.append(f"📝 Title → **{updates['summary']}**")
+            if 'description' in updates:
+                update_lines.append(f"📝 Description → {updates['description']}")
+            if 'location' in updates:
+                update_lines.append(f"📍 Location → {updates['location']}")
+            if 'reminders' in updates:
+                mins = updates['reminders'].get('overrides', [{}])[0].get('minutes', 0)
+                update_lines.append(f"🔔 Reminder → {mins} min before")
+            update_text = "\n".join(update_lines)
 
-            # Build response
-            if modified_count > 0:
-                # Build update description
-                update_lines = []
-                if 'summary' in updates:
-                    update_lines.append(f"📝 Title: **{updates['summary']}**")
-                if 'description' in updates:
-                    update_lines.append(f"📝 Description: {updates['description']}")
-                if 'location' in updates:
-                    update_lines.append(f"📍 Location: {updates['location']}")
-                if 'reminders' in updates:
-                    reminder_minutes = updates['reminders'].get('overrides', [{}])[0].get('minutes', 0)
-                    update_lines.append(f"🔔 Reminder: {reminder_minutes} min before")
+            count = len(matching_events)
+            names = ", ".join(f"**{e.get('summary', 'Untitled')}**" for e in matching_events[:3])
+            if count > 3:
+                names += f" (+{count - 3} more)"
+            is_recurring = any(e.get('recurrence') for e in matching_events)
+            recurring_note = "\n🔁 Includes recurring events." if is_recurring else ""
 
-                update_text = "\n".join(update_lines)
+            confirmation_msg = (
+                f"About to modify {count} event(s): {names}{recurring_note}\n"
+                f"{update_text}\n\n"
+                "Reply **yes** to confirm or **no** to cancel."
+            )
 
-                # Add recurring indicator if applicable
-                recurring_text = "\n🔁 Recurring" if is_recurring else ""
+            async def execute():
+                modified_count = 0
+                for event in matching_events:
+                    try:
+                        modify_event(event['id'], updates)
+                        modified_count += 1
+                    except Exception as e:
+                        print(f"Error modifying event {event.get('summary')}: {str(e)}")
 
-                if modified_count == 1:
-                    event_name = modified_events[0]
-                    return f"✓ Modified **{event_name}**{recurring_text}\n{update_text}"
-                else:
-                    return f"✓ Modified {modified_count} events{recurring_text}\n{update_text}"
-            else:
+                if modified_count > 0:
+                    recurring_text = "\n🔁 Recurring" if is_recurring else ""
+                    if modified_count == 1:
+                        name = updates.get('summary', matching_events[0].get('summary', 'Untitled'))
+                        return f"✓ Modified **{name}**{recurring_text}\n{update_text}"
+                    else:
+                        return f"✓ Modified {modified_count} events{recurring_text}\n{update_text}"
                 return "I found matching events but couldn't modify them. Please try again."
+
+            return (confirmation_msg, execute)
 
         except Exception as e:
             print(f"Error in modification handler: {str(e)}")
@@ -599,14 +598,16 @@ Now parse the message and return ONLY the JSON.
                 # Parse and format time
                 if 'T' in start:  # datetime
                     start_dt_event = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                    # Always compare and display in local timezone
+                    start_local = start_dt_event.astimezone(local_tz)
 
                     # DEBUG: Log the actual event date/time
-                    print(f"   📌 {summary}: {start_dt_event.isoformat()}")
+                    print(f"   📌 {summary}: {start_local.isoformat()}")
                     print(f"      Calendar: {calendar_name}")
-                    print(f"      Event date: {start_dt_event.date()}, Target: {target_date}")
+                    print(f"      Event date: {start_local.date()}, Target: {target_date}")
 
-                    # Check if event is actually on the requested date (using local date)
-                    event_date = start_dt_event.date()
+                    # Check if event is actually on the requested date (local date)
+                    event_date = start_local.date()
 
                     if event_date != target_date:
                         print(f"      ⚠️  SKIPPING - Date mismatch!")
@@ -615,14 +616,18 @@ Now parse the message and return ONLY the JSON.
                     print(f"      ✅ INCLUDED")
                     end = event['end'].get('dateTime')
                     if end:
-                        end_dt_event = datetime.fromisoformat(end.replace('Z', '+00:00'))
-                        time_str = f"{start_dt_event.strftime('%I:%M %p').lstrip('0')} – {end_dt_event.strftime('%I:%M %p').lstrip('0')}"
+                        end_local = datetime.fromisoformat(end.replace('Z', '+00:00')).astimezone(local_tz)
+                        time_str = f"{start_local.strftime('%I:%M %p').lstrip('0')} – {end_local.strftime('%I:%M %p').lstrip('0')}"
                     else:
-                        time_str = start_dt_event.strftime('%I:%M %p').lstrip('0')
+                        time_str = start_local.strftime('%I:%M %p').lstrip('0')
                 else:  # all-day event
-                    start_dt_event = datetime.strptime(start, '%Y-%m-%d')
+                    event_date = datetime.strptime(start, '%Y-%m-%d').date()
                     print(f"   📌 {summary}: {start} (all-day)")
                     print(f"      Calendar: {calendar_name}")
+                    print(f"      Event date: {event_date}, Target: {target_date}")
+                    if event_date != target_date:
+                        print(f"      ⚠️  SKIPPING - Date mismatch!")
+                        continue
                     print(f"      ✅ INCLUDED (all-day)")
                     time_str = "All day"
 

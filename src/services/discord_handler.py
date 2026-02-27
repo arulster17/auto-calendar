@@ -1,7 +1,10 @@
+import os
 import discord
 from discord.ext import commands
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+from google import genai
+from google.genai import types
 from features.calendar_feature import CalendarFeature
 from features.conversation_feature import ConversationFeature
 from features.fun_fact_feature import FunFactFeature
@@ -9,6 +12,14 @@ from features.youtube_feature import YouTubeFeature
 from features.search_feature import SearchFeature
 from services.intent_router import IntentRouter
 from config.bot_context import BOT_NAME, get_bot_intro
+
+_gemini_client = None
+
+def _get_gemini_client():
+    global _gemini_client
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=os.getenv('GOOGLE_GEMINI_API_KEY'))
+    return _gemini_client
 
 class AssistantBot(commands.Bot):
     """
@@ -40,6 +51,10 @@ class AssistantBot(commands.Bot):
         # Conversation context tracking (per user)
         # Structure: {user_id: [(timestamp, role, message), ...]}
         self.conversation_history = defaultdict(list)
+
+        # Pending confirmations for destructive actions (per user)
+        # Structure: {user_id: async_callable that returns str}
+        self.pending_actions = {}
 
         # Context settings
         self.MAX_CONTEXT_MESSAGES = 10  # Keep last N messages
@@ -90,7 +105,7 @@ class AssistantBot(commands.Bot):
             role: 'user' or 'assistant'
             message_text: The message content
         """
-        timestamp = datetime.now()
+        timestamp = datetime.now(timezone.utc)
         self.conversation_history[user_id].append((timestamp, role, message_text))
 
     def _get_context(self, user_id):
@@ -110,7 +125,7 @@ class AssistantBot(commands.Bot):
         if user_id not in self.conversation_history:
             return []
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         cutoff_time = now - timedelta(minutes=self.CONTEXT_WINDOW_MINUTES)
 
         # Filter by time window
@@ -146,6 +161,35 @@ class AssistantBot(commands.Bot):
             formatted += f"{role_label}: {message}\n"
 
         return formatted
+
+    async def _classify_confirmation(self, message_text: str) -> str:
+        """
+        Returns 'confirm', 'cancel', or 'other'.
+        Called only when a pending destructive action exists for the user.
+        """
+        try:
+            client = _get_gemini_client()
+            prompt = (
+                f'A user was asked to confirm or cancel a pending action. '
+                f'Their reply: "{message_text}"\n\n'
+                f'Return JSON: {{"classification": "confirm"}} if they agree, '
+                f'{{"classification": "cancel"}} if they decline, or '
+                f'{{"classification": "other"}} if the message is unrelated to a confirmation.'
+            )
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
+            )
+            import json
+            result = json.loads(response.text).get("classification", "other")
+            if result in ('confirm', 'cancel', 'other'):
+                return result
+            return 'other'
+        except Exception:
+            return 'other'
 
     async def on_ready(self):
         """Called when bot successfully connects to Discord"""
@@ -213,6 +257,29 @@ class AssistantBot(commands.Bot):
             # Add user message to context
             self._add_to_context(user_id, "user", message_text)
 
+            # Check for a pending destructive action awaiting confirmation
+            if user_id in self.pending_actions:
+                classification = await self._classify_confirmation(message_text)
+                if classification == 'confirm':
+                    execute_fn = self.pending_actions.pop(user_id)
+                    response = await execute_fn()
+                    self._add_to_context(user_id, "assistant", response)
+                    print(f"\n🤵 ALFRED: {response}")
+                    print(f"{'='*60}\n")
+                    await message.reply(response)
+                    return
+                elif classification == 'cancel':
+                    self.pending_actions.pop(user_id)
+                    response = "Cancelled."
+                    self._add_to_context(user_id, "assistant", response)
+                    print(f"\n🤵 ALFRED: {response}")
+                    print(f"{'='*60}\n")
+                    await message.reply(response)
+                    return
+                else:
+                    # Unrelated message — clear pending action and route normally
+                    self.pending_actions.pop(user_id)
+
             # Use AI to determine which feature should handle this
             handler = self.router.route(message_text, context=context)
 
@@ -221,7 +288,14 @@ class AssistantBot(commands.Bot):
 
                 try:
                     # Pass context to the handler
-                    response = await handler.handle(message, message_text, context=context)
+                    result = await handler.handle(message, message_text, context=context)
+
+                    # Tuple return = (confirmation_message, execute_fn) — destructive action pending
+                    if isinstance(result, tuple):
+                        response, execute_fn = result
+                        self.pending_actions[user_id] = execute_fn
+                    else:
+                        response = result
 
                     # Add Alfred's response to context
                     self._add_to_context(user_id, "assistant", response)

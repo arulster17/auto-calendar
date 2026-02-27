@@ -6,6 +6,7 @@ reasoning questions. Uses Gemini's built-in Google Search tool — no extra API 
 """
 
 import os
+import json
 from google import genai
 from google.genai import types
 from config.bot_context import get_system_context
@@ -96,17 +97,20 @@ Answer clearly and concisely:
 - Do not add filler like "Great question!" or "Certainly!"
 - Do not mention that you searched or used any tools
 - Just give the answer directly
+
+Return JSON: {"response": "your answer here"}
             """.strip()
 
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    tools=[types.Tool(google_search=types.GoogleSearch())]
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                    response_mime_type="application/json"
                 )
             )
 
-            return response.text.strip()
+            return json.loads(response.text)["response"]
 
         except Exception as e:
             print(f"Error in search feature: {str(e)}")

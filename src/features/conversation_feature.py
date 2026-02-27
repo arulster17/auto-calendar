@@ -6,7 +6,9 @@ task-oriented personality.
 """
 
 import os
+import json
 from google import genai
+from google.genai import types
 from config.bot_context import BOT_NAME, get_system_context
 
 # Lazy-load client
@@ -98,15 +100,18 @@ If the user is just greeting you or making small talk, respond warmly but briefl
 If they're asking what you can do, explain your calendar capabilities.
 If they're asking deep/philosophical questions, politely redirect to your actual purpose.
 
-Return ONLY your response text, no extra formatting or labels.
+Return JSON: {"response": "your reply here"}
             """.strip()
 
             response = client.models.generate_content(
                 model='gemini-2.5-flash',
-                contents=prompt
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json"
+                )
             )
 
-            return response.text.strip()
+            return json.loads(response.text)["response"]
 
         except Exception as e:
             print(f"Error in conversation feature: {str(e)}")

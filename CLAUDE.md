@@ -83,9 +83,9 @@ class MyFeature:
         Include many examples so the AI router can match accurately.
         """
 
-    async def handle(self, message, message_text, context=None) -> str:
+    async def handle(self, message, message_text, context=None) -> str | tuple:
         # Use Gemini to parse intent and extract data
-        # Return a string response
+        # Return a string response, OR a (str, async_callable) tuple for confirmation-gated actions
         pass
 ```
 
@@ -148,14 +148,15 @@ Never commit `.env`, `credentials/`, or `*.pickle` files.
 
 ## Current Features Status
 
-- **Calendar**: Create, modify, view events (with start+end times) — fully tested ✅
+- **Calendar**: Create, modify (confirmation gated), view events (start+end times) — fully tested ✅
 - **YouTube Download**: MP3/MP4, individual ranges per video, up to 5 URLs, 25MB Discord limit — fully tested ✅
 - **Fun Facts**: Working ✅
-- **Search**: Factual Q&A + web search via Gemini Google Search grounding — implemented, needs testing 🔧
+- **Search**: Factual Q&A + web search via Gemini Google Search grounding — tested ✅
 - **Conversation**: Working (fallback/small talk only — factual questions route to Search) ✅
 - **AI Routing**: Working (0.6 confidence threshold) ✅
 - **Dual OAuth**: Working (readonly for view, write for bot calendar) ✅
 - **Context system**: Working (10 messages / 15 min per user, in-memory) ✅
+- **Confirmation gates**: Destructive actions (calendar modify) require "yes" before executing ✅
 
 ---
 
@@ -170,7 +171,7 @@ pytest
 | File | What it covers |
 |------|---------------|
 | `tests/test_router.py` | 12 parametrized routing cases across all 5 features |
-| `tests/test_features.py` | Calendar view, Search (3), Fun Fact (2), Conversation (2) |
+| `tests/test_features.py` | Calendar (3), Search (3), Fun Fact (2), Conversation (2) |
 
 YouTube `handle()` is excluded (downloads real files, sends via Discord). Calendar create/modify excluded (would make real events). Both are covered by routing tests.
 
@@ -182,15 +183,26 @@ YouTube `handle()` is excluded (downloads real files, sends via Discord). Calend
 - **Calendar parsing errors**: Check `calendar_feature.py` `_parse_calendar_request()` prompt
 - **YouTube download issues**: Check `youtube_feature.py` `_parse_request()` prompt and download logic
 - **Search not triggering**: Check `search_feature.py` `get_capabilities()` and tighten `conversation_feature.py` capabilities
+- **Confirmation not firing**: Check `discord_handler.py` `_classify_confirmation()` and `pending_actions` dict
 - **Alfred too chatty/rigid**: Adjust `bot_context.py`
 - **Run from `src/` directory**: Imports assume `src/` as working directory
+
+---
+
+## Data & Timezone Standards
+
+- **All Gemini calls** use `response_mime_type="application/json"` for structured, reliable output
+- **All timestamps** stored in UTC; converted to `America/Los_Angeles` only at display time
+- **Confirmation gates**: destructive actions return `(str, async_callable)` tuple; `discord_handler.py` intercepts and awaits user confirmation before executing
 
 ## Cross-Platform Notes
 
 The codebase is compatible with Windows, macOS, and Linux:
+- `.gitattributes` normalizes line endings (LF in repo, native on checkout)
 - `strftime` uses `%I` + `.lstrip('0')` for hour formatting (not `%-I` which is Linux/macOS only)
 - Datetime comparisons use timezone-aware `datetime.now(local_tz)` not naive `datetime.now()`
 - All paths use `pathlib.Path`; temp dirs use `tempfile.gettempdir()`
+- Calendar event display explicitly converts to local_tz via `.astimezone()` before formatting
 
 Console logs show: `👤 USER`, `📚 context`, `🤖 routing decision`, `🤵 ALFRED response`
 
